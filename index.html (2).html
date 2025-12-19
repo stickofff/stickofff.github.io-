@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Détection IP</title>
+</head>
+<body>
+    <h2>Récupération de votre adresse IP</h2>
+    <p>Votre adresse IP locale (si détectable) :</p>
+    <p id="ipLocal">En cours de récupération...</p>
+
+    <script>
+        // Fonction pour obtenir l'IP locale via WebRTC
+        function getLocalIPs(callback) {
+            var ips = {};
+            var RTCPeerConnection = window.RTCPeerConnection ||
+                                   window.webkitRTCPeerConnection ||
+                                   window.mozRTCPeerConnection;
+
+            if (!RTCPeerConnection) {
+                document.getElementById("ipLocal").innerHTML = "WebRTC non supporté par ce navigateur.";
+                return;
+            }
+
+            var pc = new RTCPeerConnection({iceServers: []});
+            pc.createDataChannel('');
+
+            pc.onicecandidate = function(e) {
+                if (!e.candidate) {
+                    pc.close();
+                    return;
+                }
+                // Expression régulière simplifiée, peut ne pas capturer tous les cas.
+                // Une version plus robuste serait préférable.
+                var ip_regex = /([0-9]{1,3}(\.[0-9]{1,3}){3}|[a-f0-9]{1,4}(:[a-f0-9]{1,4}){7})/;
+                var match = ip_regex.exec(e.candidate.candidate);
+                if (match && match[1]) {
+                    var ip_addr = match[1];
+                    if (ip_addr && !ips[ip_addr] ) {
+                        ips[ip_addr] = true;
+                        callback(ip_addr);
+                    }
+                }
+            };
+
+            // Gestion d'erreur plus claire
+            function handleCreateOfferError(error) {
+                 console.warn("Erreur WebRTC (createOffer):", error);
+                 document.getElementById("ipLocal").innerHTML = "Échec de la récupération (bloquée/erreur createOffer).";
+            }
+
+            function handleSetLocalDescriptionError(error) {
+                 console.warn("Erreur WebRTC (setLocalDescription):", error);
+                 // Ne pas mettre à jour l'UI ici, car onattend encore un candidat potentiel
+            }
+
+            pc.createOffer()
+              .then(function(offer) {
+                 return pc.setLocalDescription(offer);
+              })
+              .then(function() {
+                 // Succès - l'écoute des candidats va se faire via onicecandidate
+              })
+              .catch(function(error) {
+                 handleCreateOfferError(error);
+              });
+
+            // Timeout global
+            setTimeout(function() {
+                var elem = document.getElementById("ipLocal");
+                if (elem && (elem.innerHTML === "En cours de récupération..." || elem.innerHTML.includes("En attente"))) {
+                    elem.innerHTML = "Opération échouée ou IP non détectable (délai dépassé, bloquée ou WebRTC désactivé).";
+                    pc.close(); // Fermer la connexion si elle est encore ouverte
+                }
+            }, 5000); // 5 secondes
+        }
+
+        // Appel initial
+        getLocalIPs(function(ip){
+            document.getElementById("ipLocal").innerHTML = ip;
+            console.log("IP locale détectée:", ip);
+
+            // === Section pour envoyer l'IP ===
+            // Note : Vous devez déployer un backend (ex: Flask/Node.js sur Render/Heroku)
+            // et remplacer "https://VOTRE_BACKEND_URL/enregistrer-ip" par son URL réelle.
+
+            // Exemple d'envoi vers un backend
+            // const BACKEND_URL = "https://VOTRE_BACKEND_URL/enregistrer-ip";
+
+            // fetch(BACKEND_URL, {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //     },
+            //     body: JSON.stringify({ip_locale: ip})
+            // })
+            // .then(response => {
+            //     if (!response.ok) { throw new Error('Erreur réseau'); }
+            //     return response.json();
+            // })
+            // .then(data => {
+            //     console.log('IP envoyée avec succès:', data);
+            // })
+            // .catch(error => {
+            //     console.error('Erreur lors de l\'envoi de l\'IP:', error);
+            // });
+            // === Fin de la section d'envoi ===
+
+        });
+    </script>
+</body>
+</html>
